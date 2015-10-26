@@ -8,5 +8,5 @@ Clone this repo or download the zip file and place the contents into your `inclu
 
 Info
 ------
-This plugin uses CURL and tested on osTicket-1.8.
+This plugin uses CURL and tested on osTicket-1.8.<br />
 based on https://github.com/thammanna/osticket-slack (thanks)
