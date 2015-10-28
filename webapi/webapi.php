@@ -1,6 +1,4 @@
 <?php
-//     ini_set('display_errors', 1);
-//            error_reporting(E_ALL & ~E_NOTICE);
     require_once(INCLUDE_DIR.'class.signal.php');
     require_once(INCLUDE_DIR.'class.plugin.php');
     require_once('config.php');
@@ -11,61 +9,65 @@
 
         function bootstrap()
         {
-            Signal::connect('model.created', array($this, 'onTicketCreated'), 'Ticket');
+            Signal::connect('model.created', array($this, 'onThreadEntry'), 'ThreadEntry');
         }
 
-        function onTicketCreated($ticket)
+        function onThreadEntry($threadEntry)
         {
-            try {
-                global $ost;
-                $payload = array(
-                    'attachments' =>
-                    array(
+
+            if ($threadEntry->getType() == "N") return; //system entry
+
+            $ticket = Ticket::lookup($threadEntry->ht['ticket_id']);
+
+            $recip = $ticket->getRecipients();
+
+            // conntact api for each recipient
+            foreach ($recip as $user) {
+
+                //skip thread entry creator
+                if ($threadEntry->getUserId() == $user->getId()) continue;
+
+                //$fields = $this->getConfig()->get('webapi-fields');
+
+                try {
+                    //format Your payload as Your api need
+                    $payload = array(
+                        'method' => 'addNotification',
+                        'params' =>
                         array(
-                            'pretext' => "New Ticket <".$ost->getConfig()->getUrl()."scp/tickets.php?id="
-                            .$ticket->getId()."|#".$ticket->getNumber()."> created",
-                            'fallback' => "New Ticket <".$ost->getConfig()->getUrl()."scp/tickets.php?id="
-                            .$ticket->getId()."|#".$ticket->getNumber()."> created",
-                            'color' => "#D00000",
-                            'fields' =>
-                            array(
-                                array(
-                                    'title' => $ticket->getSubject(),
-                                    'value' => "created by ".$ticket->getName()."(".$ticket->getEmail()
-                                    .") in ".$ticket->getDeptName()."(Department) via "
-                                    .$ticket->getSource(),
-                                    'short' => False,
-                                ),
-                            ),
-                        ),
-                    ),
-                );
-               
-                $data_string = utf8_encode(json_encode($payload));
-                $url         = $this->getConfig()->get('webapi-url');
+                            'ticketID' => $ticket->getId(),
+                            'title' => $ticket->getSubject(),
+                            'value' => $threadEntry->getBody(),
+                            'poster' => $threadEntry->getPoster(),
+                        )
+                    );
 
-                $ch = curl_init($url);
-                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_HTTPHEADER,
-                    array(
-                    'Content-Type: application/json',
-                    'Content-Length: '.strlen($data_string))
-                );
+                    $data_string = utf8_encode(json_encode($payload));
+                    $url         = $this->getConfig()->get('webapi-url');
 
-                if (curl_exec($ch) === false) {
-                    throw new Exception($url.' - '.curl_error($ch));
-                } else {
-                    $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                    if ($statusCode != '200') {
-                        throw new Exception($url.' Http code: '.$statusCode);
+                    $ch      = curl_init($url);
+                    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER,
+                        array(
+                        'Content-Type: application/json',
+                        'Content-Length: '.strlen($data_string))
+                    );
+                    $content = curl_exec($ch);
+                    if ($content === false) {
+                        throw new Exception($url.' - '.curl_error($ch));
+                    } else {
+
+                        $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        if ($statusCode != '200') {
+                            throw new Exception($url.' Http code: '.$statusCode);
+                        }
                     }
-                   
+                    curl_close($ch);
+                } catch (Exception $e) {
+                    error_log('Error posting to Web API. '.$e->getMessage());
                 }
-                curl_close($ch);
-            } catch (Exception $e) {
-                error_log('Error posting to Slack. '.$e->getMessage());
             }
         }
     }
